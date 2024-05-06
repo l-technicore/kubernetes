@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +46,6 @@ import (
 	"k8s.io/component-base/featuregate"
 	controllersmetrics "k8s.io/component-base/metrics/prometheus/controllers"
 	"k8s.io/controller-manager/pkg/features"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -214,7 +214,21 @@ func (c *Controller) enqueueNode(obj interface{}) {
 // It's an error to call Run() more than once for a given ServiceController
 // object.
 func (c *Controller) Run(ctx context.Context, workers int, controllerManagerMetrics *controllersmetrics.ControllerManagerMetrics) {
-	c.eventBroadcaster = record.NewBroadcaster(record.WithContext(ctx))
+	opts := record.CorrelatorOptions{SpamKeyFunc: func(event *v1.Event) string {
+		return strings.Join([]string{
+			event.Source.Component,
+			event.Source.Host,
+			event.InvolvedObject.Kind,
+			event.InvolvedObject.Namespace,
+			event.InvolvedObject.Name,
+			string(event.InvolvedObject.UID),
+			event.InvolvedObject.APIVersion,
+			event.Type,
+			event.Reason,
+		},
+			"")
+	}}
+	c.eventBroadcaster = record.NewBroadcaster(record.WithContext(ctx), record.WithCorrelatorOptions(opts))
 	c.eventRecorder = c.eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "service-controller"})
 
 	defer runtime.HandleCrash()
